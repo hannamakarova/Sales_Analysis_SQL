@@ -4,7 +4,6 @@ The goal was to generate insights that help assess user activity by country, seg
 
 Key Deliverables:
 1. SQL Query Creation:
-
 I created an SQL query to generate a dataset that includes key metrics for both accounts and emails.
 The query calculates the following primary metrics:
 Account Metrics: Number of accounts created.
