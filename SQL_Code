@@ -1,0 +1,148 @@
+WITH
+  account_session AS (
+    SELECT
+      s.date,
+      sp.country,
+      a.send_interval,
+      a.is_verified,
+      a.is_unsubscribed,
+      count(distinct a.id) as account_cnt
+    FROM
+    `data-analytics-mate.DA.account` a
+     JOIN
+     `data-analytics-mate.DA.account_session` acs
+    ON
+    a.id  = acs.account_id
+    JOIN
+      `data-analytics-mate.DA.session` s
+      ON
+      acs.ga_session_id = s.ga_session_id
+    JOIN
+      `data-analytics-mate.DA.session_params` sp
+    ON
+      s.ga_session_id = sp.ga_session_id
+
+
+    group by s.date, sp.country, a.send_interval, a.is_verified, a.is_unsubscribed
+  ),
+ 
+  email_metricts AS (
+    SELECT
+      DATE_ADD(s.date, INTERVAL es.sent_date DAY) AS sent_date,
+      sp.country,
+      a.send_interval,
+      a.is_verified,
+      a.is_unsubscribed,
+      count(distinct es.id_message) AS sent_msg ,
+      count(distinct eo.id_message) AS open_msg ,
+      count(distinct ev.id_message) AS visit_msg
+    FROM
+      `DA.email_sent` es
+    LEFT JOIN
+      `DA.email_open` eo
+    ON
+      es.id_message = eo.id_message
+    LEFT JOIN
+      `DA.email_visit` ev
+    ON
+      es.id_message = ev.id_message
+     JOIN
+    `DA.account` a
+    ON a.id= es.id_account
+     JOIN
+      `data-analytics-mate.DA.account_session` acs
+    ON
+      acs.account_id = es.id_account
+     JOIN `DA.session`s
+    on s.ga_session_id = acs.ga_session_id
+     JOIN
+      `DA.session_params` sp
+    ON
+      sp.ga_session_id = s.ga_session_id
+   group by  DATE_ADD(s.date, INTERVAL es.sent_date DAY),
+      sp.country,
+      es.id_account,
+      a.send_interval,
+      a.is_verified,
+      a.is_unsubscribed
+
+
+  ),
+
+
+ac_em_union as (
+
+
+SELECT
+account_session.date,
+account_session.country,
+account_session.send_interval,
+account_session.is_verified,
+account_session.is_unsubscribed,
+account_session.account_cnt,
+0 as sent_msg,
+0 as open_msg,
+0 as visit_msg,
+FROM account_session
+
+
+
+
+UNION ALL
+SELECT
+email_metricts.sent_date,
+email_metricts.country,
+email_metricts.send_interval,
+email_metricts.is_verified,
+email_metricts.is_unsubscribed,
+0 as account_cnt,
+email_metricts.sent_msg,
+email_metricts.open_msg,
+email_metricts.visit_msg
+
+
+FROM email_metricts
+
+
+
+
+),
+
+
+sum_cte as (
+  SELECT
+date,
+country,
+send_interval as send_interval,
+is_verified as is_verified,
+is_unsubscribed as is_unsubscribed,
+sum(account_cnt) as account_cnt,
+sum(sent_msg) as sent_msg,
+sum(open_msg) as open_msg ,
+sum(visit_msg) as visit_msg
+
+
+FROM
+ac_em_union
+ GROUP BY 1,2,3,4,5
+),
+
+
+rank_cnt AS (
+Select *,
+dense_rank() over (order by total_country_account_cnt desc) as rank_total_country_account_cnt,
+dense_rank() over (order by total_country_sent_cnt desc) as rank_total_country_sent_cnt
+from (
+Select *,
+      sum(account_cnt) over (partition by country) as total_country_account_cnt,
+      sum(sent_msg) over (partition by country) as total_country_sent_cnt,
+from sum_cte) as sum_cte
+
+
+)
+
+
+SELECT *
+FROM
+rank_cnt
+where rank_total_country_account_cnt <= 10 or rank_total_country_sent_cnt<= 10
